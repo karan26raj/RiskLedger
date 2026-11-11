@@ -2,6 +2,8 @@ from fastapi import FastAPI
 
 app = FastAPI(title="RiskLedger API", version="0.1.0")
 
+TIERS: tuple[str, ...] = ("critical", "high", "medium", "low")
+
 VENDORS: list[dict] = [
     {
         "id": 1,
@@ -76,6 +78,18 @@ FINDINGS: list[dict] = [
     },
 ]
 
+def summarize_vendors(vendors: list[dict]) -> dict:
+    by_tier = {tier: 0 for tier in TIERS}
+    for vendor in vendors:
+        by_tier[vendor["tier"]] += 1
+    active = sum(1 for vendor in vendors if vendor["status"] == "active")
+    return {"total": len(vendors), "by_tier": by_tier, "active": active}
+
+
+def open_findings_by_cvss(findings: list[dict]) -> list[dict]:
+    open_findings = [f for f in findings if f["status"] == "open"]
+    return sorted(open_findings, key=lambda f: f["cvss"], reverse=True)
+
 
 @app.get("/health")
 def health() -> dict:
@@ -87,30 +101,16 @@ def list_vendors() -> list[dict]:
     return VENDORS
 
 
+@app.get("/vendors/summary")
+def vendors_summary() -> dict:
+    return summarize_vendors(VENDORS)
+
+
 @app.get("/findings")
 def list_findings() -> list[dict]:
     return FINDINGS
 
 
 @app.get("/findings/open")
-def count_open_findings() -> dict:
-    open_count = sum(1 for finding in FINDINGS if finding["status"] == "open")
-    return {"open": open_count}
-
-
-TIERS = ("critical", "high", "medium", "low")
-
-
-@app.get("/vendors/summary")
-def vendors_summary() -> dict:
-    by_tier = {}
-    for tier in TIERS:
-        by_tier[tier] = 0
-
-    active = 0
-    for vendor in VENDORS:
-        by_tier[vendor["tier"]] = by_tier.get(vendor["tier"], 0) + 1
-        if vendor["status"] == "active":
-            active += 1
-
-    return {"total": len(VENDORS), "by_tier": by_tier, "active": active}
+def list_open_findings() -> list[dict]:
+    return open_findings_by_cvss(FINDINGS)

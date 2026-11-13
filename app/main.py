@@ -1,4 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,HTTPException,Path
+from enum import Enum
+from typing import Annotated
 
 app = FastAPI(title="RiskLedger API", version="0.1.0")
 
@@ -78,6 +80,29 @@ FINDINGS: list[dict] = [
     },
 ]
 
+class Scanner(str,Enum):
+    NESSUS="nessus"
+    QUALYS="qualys"
+    OPENVAS="openvas"
+
+SCANNERS: dict[Scanner, dict] = {
+    Scanner.NESSUS: {
+        "scanner": "nessus",
+        "display_name": "Tenable Nessus",
+        "severity_scale": "cvss_v3",
+    },
+    Scanner.QUALYS: {
+        "scanner": "qualys",
+        "display_name": "Qualys VMDR",
+        "severity_scale": "cvss_v3",
+    },
+    Scanner.OPENVAS: {
+        "scanner": "openvas",
+        "display_name": "OpenVAS",
+        "severity_scale": "cvss_v3",
+    },
+}
+
 def summarize_vendors(vendors: list[dict]) -> dict:
     by_tier = {tier: 0 for tier in TIERS}
     for vendor in vendors:
@@ -114,3 +139,43 @@ def list_findings() -> list[dict]:
 @app.get("/findings/open")
 def list_open_findings() -> list[dict]:
     return open_findings_by_cvss(FINDINGS)
+
+@app.get("/vendors/{vendor_id}")
+def get_vendor(vendor_id:Annotated[int, Path(ge=1)])->dict | None:
+    for vendor in VENDORS:
+        if vendor_id==vendor["id"]:
+            return vendor
+        
+    raise HTTPException(status_code=404,detail=f"Vendor {vendor_id} not found")
+
+@app.get("/findings/{finding_id}")
+def get_findings(finding_id:Annotated[int, Path(ge=1)])->dict | None:
+    for finding in FINDINGS:
+        if finding_id==finding["id"]:
+            return finding
+    raise HTTPException(status_code=404,detail=f"ID {finding_id} doesn't exist")
+
+@app.get("/vendors/{vendor_id}/findings")
+def vendor_finding(vendor_id:Annotated[int,Path(ge=1)])->dict | None:
+    for finding in FINDINGS:
+        if vendor_id==finding["id"]:
+            return finding
+    raise HTTPException(status_code=404,details=f"Vendor {vendor_id} doesn't exist in the FINDINGS")
+
+@app.get("/vendors/{vendor_id}/findings/{finding_id}")
+def get_vendor_finding(vendor_id: Annotated[int, Path(ge=1)],
+                       finding_id: Annotated[int, Path(ge=1)]) -> dict:
+    if not any(vendor["id"] == vendor_id for vendor in VENDORS):
+        raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
+
+    for finding in FINDINGS:
+        if finding["id"] == finding_id and finding["vendor_id"] == vendor_id:
+            return finding
+    raise HTTPException(
+        status_code=404,
+        detail=f"Finding {finding_id} not found for vendor {vendor_id}",
+    )
+
+@app.get("/scanners/{scanner}")
+def get_scanner(scanner: Scanner) -> dict:
+    return SCANNERS[scanner]
